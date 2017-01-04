@@ -1,8 +1,8 @@
-# vga_switcheroo
+## vga_switcheroo
 
 Port of vga_switcheroo to DragonFly
 
-### Installing
+### Installation
 
 Copy `vga_switcheroo.h` to
 
