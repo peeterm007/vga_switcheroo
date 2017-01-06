@@ -45,10 +45,10 @@
 
 //#include <linux/console.h>
 //#include <linux/debugfs.h>
-#include <linux/fb.h>					/* exists: struct fb_info */
+#include <linux/fb.h>			/* exists: struct fb_info */
 #include <linux/fs.h>
 #include <linux/module.h>
-#include <linux/pci.h>				/* exists: struct pci_dev */
+#include <linux/pci.h>			/* exists: struct pci_dev */
 //#include <linux/pm_domain.h>
 //#include <linux/pm_runtime.h>
 //#include <linux/seq_file.h>		/* exists: struct seq_file */
@@ -58,10 +58,10 @@
 
 /* DragonFly */
 #include <linux/pci_ids.h>		/* PCI_VENDOR_ID_INTEL, PCI_VENDOR_ID_NVIDIA */
-#include <linux/mutex.h>			/* DEFINE_MUTEX */
-#include <linux/list.h>				/* LIST_HEAD_INIT -> INIT_LIST_HEAD */
-#include <linux/export.h>			/* EXPORT_SYMBOL */
-//#include <linux/slab.h>				/* kzalloc(), kfree() */
+#include <linux/mutex.h>		/* DEFINE_MUTEX */
+#include <linux/list.h>			/* LIST_HEAD_INIT */
+#include <linux/export.h>		/* EXPORT_SYMBOL */
+//#include <linux/slab.h>		/* kzalloc(), kfree() */
 
 /**
  * DOC: Overview
@@ -176,8 +176,6 @@ struct vgasr_priv {
 	const struct vga_switcheroo_handler *handler;
 	enum vga_switcheroo_handler_flags_t handler_flags;
 
-	//struct mutex mux_hw_lock;
-	//DFly:
 	struct lock mux_hw_lk;
 
 	int old_ddc_owner;
@@ -359,10 +357,13 @@ vga_switcheroo_register_client(struct pci_dev *pdev,
 	int unit, default_vgapci_unit;
 	size_t len;
 
-	// get the device unit
+	/*
+	 * We need to find out if video device pci_dev is
+	 * the active (default) video device: will determine
+	 * if the pci_dev unit is the default_vgapci_unit
+	 */
 	unit = device_get_unit(pdev->dev.bsddev);
 
-	// get the default unit
 	len = sizeof(default_vgapci_unit);
 	error = kernel_sysctlbyname("hw.pci.default_vgapci_unit", &default_vgapci_unit, &len, NULL, 0, NULL);
 	if (error) {
@@ -473,7 +474,6 @@ vga_switcheroo_unregister_client(struct pci_dev *pdev)
 		if (client_is_vga(client))
 			vgasr_priv->registered_clients--;
 		list_del(&client->list);
-		//kfree(client);
 		kfree(client, M_VGA_SWITCHEROO_CLIENT);
 	}
 	if (vgasr_priv->active && vgasr_priv->registered_clients < 2) {
@@ -1034,14 +1034,14 @@ vga_switcheroo_close(struct dev_close_args *ap)
 static int
 vga_switcheroo_read(struct dev_read_args *ap)
 {
+	/* XXX: TODO: mimic linux sysfs interface */
+
 	/* XXX: TODO
 	struct uio *uio = ap->a_uio;
 	size_t amt;
 	*/
 
 	int error = 0;
-
-	/* XXX */
 
 	//DEBUG
 	//uprintf(":Read successful!:");
@@ -1052,6 +1052,8 @@ vga_switcheroo_read(struct dev_read_args *ap)
 static int
 vga_switcheroo_write(struct dev_write_args *ap)
 {
+	/* XXX: TODO: mimic linux sysfs interface */
+
 	/* XXX: TODO
 	struct uio *uio = ap->a_uio;
 	size_t amt;
