@@ -228,6 +228,7 @@ vga_switcheroo_enable(void)
 
 		client->id = ret;
 	}
+	//XXX: TODO
 	//vga_switcheroo_debugfs_init(&vgasr_priv);
 	vgasr_priv->active = true;
 }
@@ -286,7 +287,7 @@ vga_switcheroo_unregister_handler(void)
 	mutex_unlock(&vgasr_priv->mux_hw_lk);
 	mutex_unlock(&vgasr_mutex);
 	//DEBUG
-	pr_info("vga_switcheroo: unregistered handler\n");
+	pr_info("unregistered handler\n");
 }
 EXPORT_SYMBOL(vga_switcheroo_unregister_handler);
 
@@ -484,6 +485,7 @@ vga_switcheroo_unregister_client(struct pci_dev *pdev)
 	}
 	if (vgasr_priv->active && vgasr_priv->registered_clients < 2) {
 		pr_info("disabled\n");
+		//XXX: TODO
 		//vga_switcheroo_debugfs_fini(&vgasr_priv);
 		vgasr_priv->active = false;
 	}
@@ -1049,19 +1051,22 @@ vga_switcheroo_close(struct dev_close_args *ap)
 static int
 vga_switcheroo_read(struct dev_read_args *ap)
 {
-	/* XXX: TODO: mimic linux sysfs interface */
+	struct vga_switcheroo_client *client;
+	int i = 0;
 
-	/* XXX: TODO
-	struct uio *uio = ap->a_uio;
-	size_t amt;
-	*/
-
-	int error = 0;
-
-	//DEBUG
-	//uprintf(":Read successful!:");
-
-	return (error);
+	mutex_lock(&vgasr_mutex);
+	list_for_each_entry(client, &vgasr_priv->clients, list) {
+		uprintf("%d:%s%s:%c:%s%s:%s\n", i,
+			client_id(client) == VGA_SWITCHEROO_DIS ? "DIS" : "IGD",
+			client_is_vga(client) ? "" : "-Audio",
+			client->active ? '+' : ' ',
+			client->driver_power_control ? "Dyn" : "",
+			client->pwr_state ? "Pwr" : "Off",
+			device_get_nameunit(client->pdev->dev.bsddev));
+		i++;
+	}
+	mutex_unlock(&vgasr_mutex);
+	return 0;
 }
 
 static int
