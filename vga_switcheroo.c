@@ -1,4 +1,11 @@
 /*
+ * vga_switcheroo.c -- vga_switcheroo driver for DragonFly
+ *
+ * Adapted from linux v4.8: linux-src/drivers/gpu/vga/vga_switcheroo.c
+ *
+ */
+
+/*
  * vga_switcheroo.c - Support for laptop with dual GPU using one set of outputs
  *
  * Copyright (c) 2010 Red Hat Inc.
@@ -40,6 +47,7 @@
 #include <sys/device.h>
 #include <sys/conf.h>
 #include <sys/rman.h>
+#include <sys/uio.h>
 
 #define pr_fmt(fmt) "vga_switcheroo: " fmt
 
@@ -175,9 +183,7 @@ struct vgasr_priv {
 
 	const struct vga_switcheroo_handler *handler;
 	enum vga_switcheroo_handler_flags_t handler_flags;
-
 	struct lock mux_hw_lk;
-
 	int old_ddc_owner;
 };
 
@@ -254,7 +260,7 @@ vga_switcheroo_register_handler(const struct vga_switcheroo_handler *handler,
 	}
 	mutex_unlock(&vgasr_mutex);
 	//DEBUG
-	pr_info("vga_switcheroo: registered handler\n");
+	pr_info("registered handler\n");
 	return 0;
 }
 EXPORT_SYMBOL(vga_switcheroo_register_handler);
@@ -643,20 +649,20 @@ vga_switcheroo_debugfs_open(struct inode *inode, struct file *file)
 {
 	return single_open(file, vga_switcheroo_show, NULL);
 }
+#endif /* debugfs 1 */
 
 static int
 vga_switchon(struct vga_switcheroo_client *client)
 {
 	if (client->driver_power_control)
 		return 0;
-	if (vgasr_priv.handler->power_state)
-		vgasr_priv.handler->power_state(client->id, VGA_SWITCHEROO_ON);
+	if (vgasr_priv->handler->power_state)
+		vgasr_priv->handler->power_state(client->id, VGA_SWITCHEROO_ON);
 	/* call the driver callback to turn on device */
 	client->ops->set_gpu_state(client->pdev, VGA_SWITCHEROO_ON);
 	client->pwr_state = VGA_SWITCHEROO_ON;
 	return 0;
 }
-#endif /* debugfs 1 */
 
 static int
 vga_switchoff(struct vga_switcheroo_client *client)
@@ -684,24 +690,24 @@ set_audio_state(enum vga_switcheroo_client_id id,
 	}
 }
 
-#if 0  /* debugfs 1.5 */
 /* stage one happens before delay */
 static int
 vga_switchto_stage1(struct vga_switcheroo_client *new_client)
 {
 	struct vga_switcheroo_client *active;
 
-	active = find_active_client(&vgasr_priv.clients);
+	active = find_active_client(&vgasr_priv->clients);
 	if (!active)
 		return 0;
 
 	if (new_client->pwr_state == VGA_SWITCHEROO_OFF)
 		vga_switchon(new_client);
 
-	vga_set_default_device(new_client->pdev);
+	//XXX CRITICAL TODO:
+	//vga_set_default_device(new_client->pdev);
+
 	return 0;
 }
-#endif  /* debugfs 1.5 */
 
 /* post delay */
 static int
@@ -718,7 +724,8 @@ vga_switchto_stage2(struct vga_switcheroo_client *new_client)
 
 	set_audio_state(active->id, VGA_SWITCHEROO_OFF);
 
-	/* XXX CRITICAL TODO
+	/* XXX CRITICAL TODO: set new fb
+
 	if (new_client->fb_info) {
 		struct fb_event event;
 
@@ -968,6 +975,14 @@ MALLOC_DEFINE(M_VGA_SWITCHEROO_BUF, "vga_switcheroo_buf", "buffer for vga_switch
 MALLOC_DECLARE(M_VGA_SWITCHEROO_VGASR_PRIV);
 MALLOC_DEFINE(M_VGA_SWITCHEROO_VGASR_PRIV, "vga_switcheroo_vgasr_priv", "private data of vga_switcheroo");
 
+/* XXX: TODO! ! !
+
+Add from linux 4.8:
+
+vga_switcheroo_client_probe_defer()
+
+*/
+
 static int
 vga_switcheroo_handler(struct module *m __unused, int what, void *arg __unused)
 {
@@ -1004,7 +1019,7 @@ vga_switcheroo_handler(struct module *m __unused, int what, void *arg __unused)
 		kfree(vga_switcheroo_buf, M_VGA_SWITCHEROO_BUF);
 		kfree(vgasr_priv, M_VGA_SWITCHEROO_VGASR_PRIV);
 		//DEBUG
-		kprintf("vga_switcheroo_buf device unloaded\n");
+		kprintf("vga_switcheroo device unloaded\n");
 		break;
 
 	default:
@@ -1052,17 +1067,177 @@ vga_switcheroo_read(struct dev_read_args *ap)
 static int
 vga_switcheroo_write(struct dev_write_args *ap)
 {
-	/* XXX: TODO: mimic linux sysfs interface */
-
-	/* XXX: TODO
 	struct uio *uio = ap->a_uio;
 	size_t amt;
-	*/
-
 	int error = 0;
 
-	/* XXX */
+	//DEBUG
+	int cnt;
 
+	int ret;
+	bool can_switch;
+	bool delay = false;
+	bool just_mux = false;
+	enum vga_switcheroo_client_id client_id = VGA_SWITCHEROO_UNKNOWN_ID;
+	struct vga_switcheroo_client *client = NULL;
+
+	/*
+	 * We either write from the beginning or are appending -- do
+	 * not allow random access.
+	 */
+	if (uio->uio_offset != 0 && (uio->uio_offset != vga_switcheroo_buf->len))
+		return (EINVAL);
+
+	/* This is a new message, reset length */
+	if (uio->uio_offset == 0)
+		vga_switcheroo_buf->len = 0;
+
+	/* Copy the string in from user memory to kernel memory */
+	amt = MIN(uio->uio_resid, (BUFFERSIZE - vga_switcheroo_buf->len));
+
+	//CHECK
+	cnt = amt;
+
+	//DEBUG
+	uprintf("[amt = %lu]", amt);
+
+	error = uiomove(vga_switcheroo_buf->msg + uio->uio_offset, amt, uio);
+
+	/* Now we need to null terminate and record the length */
+	vga_switcheroo_buf->len = uio->uio_offset;
+	vga_switcheroo_buf->msg[vga_switcheroo_buf->len] = 0;
+
+	if (error != 0)
+		uprintf("Write failed: bad address!\n");
+
+	//DEBUG
+	uprintf(":Write successful!:");
+
+	//lock vgasr_priv
+	mutex_lock(&vgasr_mutex);
+
+	if (!vgasr_priv->active) {
+		//DEBUG
+		uprintf("vga_switcheroo: not active!\n");
+
+		error = -EINVAL;
+		goto out;
+	}
+
+	/*
+	 * NOW START PROCESSING COMMANDS
+	 */
+
+	/* pwr off the device not in use */
+	if (strncmp(vga_switcheroo_buf->msg, "OFF", 3) == 0) {
+		//DEBUG
+		uprintf("vga_switcheroo: command = OFF\n");
+
+		list_for_each_entry(client, &vgasr_priv->clients, list) {
+			if (client->active || client_is_audio(client))
+				continue;
+			if (client->driver_power_control)
+				continue;
+			set_audio_state(client->id, VGA_SWITCHEROO_OFF);
+			if (client->pwr_state == VGA_SWITCHEROO_ON)
+				vga_switchoff(client);
+		}
+		goto out;
+	}
+
+	/* pwr on the device not in use */
+	if (strncmp(vga_switcheroo_buf->msg, "ON", 2) == 0) {
+		//DEBUG
+		uprintf("vga_switcheroo: command = ON\n");
+
+		list_for_each_entry(client, &vgasr_priv->clients, list) {
+			if (client->active || client_is_audio(client))
+				continue;
+			if (client->driver_power_control)
+				continue;
+			if (client->pwr_state == VGA_SWITCHEROO_OFF)
+				vga_switchon(client);
+			set_audio_state(client->id, VGA_SWITCHEROO_ON);
+		}
+		goto out;
+	}
+
+	/* request a delayed switch - test can we switch now */
+	if (strncmp(vga_switcheroo_buf->msg, "DIGD", 4) == 0) {
+		//DEBUG
+		uprintf("vga_switcheroo: command = DIGD\n");
+
+		client_id = VGA_SWITCHEROO_IGD;
+		delay = true;
+	}
+
+	if (strncmp(vga_switcheroo_buf->msg, "DDIS", 4) == 0) {
+		client_id = VGA_SWITCHEROO_DIS;
+		delay = true;
+	}
+
+	if (strncmp(vga_switcheroo_buf->msg, "IGD", 3) == 0)
+		client_id = VGA_SWITCHEROO_IGD;
+
+	if (strncmp(vga_switcheroo_buf->msg, "DIS", 3) == 0)
+		client_id = VGA_SWITCHEROO_DIS;
+
+	if (strncmp(vga_switcheroo_buf->msg, "MIGD", 4) == 0) {
+		just_mux = true;
+		client_id = VGA_SWITCHEROO_IGD;
+	}
+
+	if (strncmp(vga_switcheroo_buf->msg, "MDIS", 4) == 0) {
+		just_mux = true;
+		client_id = VGA_SWITCHEROO_DIS;
+	}
+
+	if (client_id == VGA_SWITCHEROO_UNKNOWN_ID)
+		goto out;
+	client = find_client_from_id(&vgasr_priv->clients, client_id);
+	if (!client)
+		goto out;
+
+	vgasr_priv->delayed_switch_active = false;
+
+	if (just_mux) {
+		mutex_lock(&vgasr_priv->mux_hw_lk);
+		ret = vgasr_priv->handler->switchto(client_id);
+		mutex_unlock(&vgasr_priv->mux_hw_lk);
+		goto out;
+	}
+
+	if (client->active)
+		goto out;
+
+	/* okay we want a switch - test if devices are willing to switch */
+	can_switch = check_can_switch();
+
+	if (can_switch == false && delay == false)
+		goto out;
+
+	if (can_switch) {
+		ret = vga_switchto_stage1(client);
+		if (ret)
+			pr_err("switching failed stage 1 %d\n", ret);
+
+		ret = vga_switchto_stage2(client);
+		if (ret)
+			pr_err("switching failed stage 2 %d\n", ret);
+
+	} else {
+		pr_info("setting delayed switch to client %d\n", client->id);
+		vgasr_priv->delayed_switch_active = true;
+		vgasr_priv->delayed_client_id = client_id;
+
+		ret = vga_switchto_stage1(client);
+		if (ret)
+			pr_err("delayed switching stage 1 failed %d\n", ret);
+	}
+
+out:
+	mutex_unlock(&vgasr_mutex);
+	//TODO: cnt vs error
 	return (error);
 }
 

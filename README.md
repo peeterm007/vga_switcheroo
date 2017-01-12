@@ -1,6 +1,6 @@
 ## vga_switcheroo
 
-Port of vga_switcheroo to DragonFly
+Port of vga_switcheroo to DragonFly.
 
 ### Installation
 
