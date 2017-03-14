@@ -205,5 +205,5 @@ static inline void vga_switcheroo_fini_domain_pm_ops(struct device *dev) {}
 static inline int vga_switcheroo_init_domain_pm_optimus_hdmi_audio(struct device *dev, struct dev_pm_domain *domain) { return -EINVAL; }
 #endif /* pm_ops */
 
-#endif
+#endif /* VGA_SWITCHEROO */
 #endif /* _LINUX_VGA_SWITCHEROO_H_ */
