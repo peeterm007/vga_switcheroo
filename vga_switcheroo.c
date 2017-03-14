@@ -339,6 +339,8 @@ register_client(struct pci_dev *pdev,
 		vga_switcheroo_enable();
 	}
 	mutex_unlock(&vgasr_mutex);
+	//DEBUG
+	pr_info("client_register(): done"\n);
 	return 0;
 }
 
@@ -378,6 +380,8 @@ vga_switcheroo_register_client(struct pci_dev *pdev,
 		return (error);
 	}
 
+	//DEBUG
+	pr_info("vga_switcheroo_register_client(): register vgapci unit %d\n", unit);
 	return register_client(pdev, ops, VGA_SWITCHEROO_UNKNOWN_ID,
 			       unit == default_vgapci_unit,
 			       driver_power_control);

@@ -144,6 +144,7 @@ struct vga_switcheroo_client_ops {
 	bool (*can_switch)(struct pci_dev *dev);
 };
 
+#if defined(VGA_SWITCHEROO)
 void vga_switcheroo_unregister_client(struct pci_dev *dev);
 int vga_switcheroo_register_client(struct pci_dev *dev,
 				   const struct vga_switcheroo_client_ops *ops,
@@ -175,8 +176,8 @@ int vga_switcheroo_init_domain_pm_ops(struct device *dev, struct dev_pm_domain *
 void vga_switcheroo_fini_domain_pm_ops(struct device *dev);
 int vga_switcheroo_init_domain_pm_optimus_hdmi_audio(struct device *dev, struct dev_pm_domain *domain);
 #endif  /* pm_ops */
+#else  /* VGA_SWITCHEROO */
 
-#if 0  /* no ops */
 static inline void vga_switcheroo_unregister_client(struct pci_dev *dev) {}
 static inline int vga_switcheroo_register_client(struct pci_dev *dev,
 		const struct vga_switcheroo_client_ops *ops, bool driver_power_control) { return 0; }
@@ -191,13 +192,18 @@ static inline enum vga_switcheroo_handler_flags_t vga_switcheroo_handler_flags(v
 static inline int vga_switcheroo_lock_ddc(struct pci_dev *pdev) { return -ENODEV; }
 static inline int vga_switcheroo_unlock_ddc(struct pci_dev *pdev) { return -ENODEV; }
 static inline int vga_switcheroo_process_delayed_switch(void) { return 0; }
+static inline bool vga_switcheroo_client_probe_defer(struct pci_dev *pdev) { return false; }
 static inline enum vga_switcheroo_state vga_switcheroo_get_client_state(struct pci_dev *dev) { return VGA_SWITCHEROO_ON; }
 
+#if 0  /* dynamic_switch */
 static inline void vga_switcheroo_set_dynamic_switch(struct pci_dev *pdev, enum vga_switcheroo_state dynamic) {}
+#endif  /* dynamic_switch */
 
+#if 0  /* pm_ops */
 static inline int vga_switcheroo_init_domain_pm_ops(struct device *dev, struct dev_pm_domain *domain) { return -EINVAL; }
 static inline void vga_switcheroo_fini_domain_pm_ops(struct device *dev) {}
 static inline int vga_switcheroo_init_domain_pm_optimus_hdmi_audio(struct device *dev, struct dev_pm_domain *domain) { return -EINVAL; }
-#endif  /* no ops */
+#endif /* pm_ops */
 
+#endif
 #endif /* _LINUX_VGA_SWITCHEROO_H_ */
