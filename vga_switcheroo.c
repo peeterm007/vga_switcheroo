@@ -1,7 +1,7 @@
 /*
  * vga_switcheroo.c -- vga_switcheroo driver for DragonFly
  *
- * Adapted from linux v4.8: linux-src/drivers/gpu/vga/vga_switcheroo.c
+ * Adapted from linux v4.9: linux-src/drivers/gpu/vga/vga_switcheroo.c
  *
  */
 
@@ -51,25 +51,15 @@
 
 #define pr_fmt(fmt) "vga_switcheroo: " fmt
 
-//#include <linux/console.h>
-//#include <linux/debugfs.h>
-#include <linux/fb.h>			/* exists: struct fb_info */
+#include <linux/fb.h>
 #include <linux/fs.h>
 #include <linux/module.h>
-#include <linux/pci.h>			/* exists: struct pci_dev */
-//#include <linux/pm_domain.h>
-//#include <linux/pm_runtime.h>
-//#include <linux/seq_file.h>		/* exists: struct seq_file */
-//#include <linux/uaccess.h>
-//#include <linux/vgaarb.h>
+#include <linux/pci.h>
 #include <linux/vga_switcheroo.h>
-
-/* DragonFly */
-#include <linux/pci_ids.h>		/* PCI_VENDOR_ID_INTEL, PCI_VENDOR_ID_NVIDIA */
-#include <linux/mutex.h>		/* DEFINE_MUTEX */
-#include <linux/list.h>			/* LIST_HEAD_INIT */
-#include <linux/export.h>		/* EXPORT_SYMBOL */
-//#include <linux/slab.h>		/* kzalloc(), kfree() */
+#include <linux/pci_ids.h>
+#include <linux/mutex.h>
+#include <linux/list.h>
+#include <linux/export.h>
 
 /**
  * DOC: Overview
@@ -260,8 +250,6 @@ vga_switcheroo_register_handler(const struct vga_switcheroo_handler *handler,
 		vga_switcheroo_enable();
 	}
 	mutex_unlock(&vgasr_mutex);
-	//DEBUG
-	pr_info("registered handler\n");
 	return 0;
 }
 EXPORT_SYMBOL(vga_switcheroo_register_handler);
@@ -286,8 +274,6 @@ vga_switcheroo_unregister_handler(void)
 	}
 	mutex_unlock(&vgasr_priv->mux_hw_lk);
 	mutex_unlock(&vgasr_mutex);
-	//DEBUG
-	pr_info("unregistered handler\n");
 }
 EXPORT_SYMBOL(vga_switcheroo_unregister_handler);
 
@@ -317,7 +303,6 @@ register_client(struct pci_dev *pdev,
 {
 	struct vga_switcheroo_client *client;
 
-	//client = kzalloc(sizeof(*client), GFP_KERNEL);
 	client = kmalloc(sizeof(*client), M_VGA_SWITCHEROO_CLIENT, M_WAITOK | M_ZERO);
 	if (!client)
 		return -ENOMEM;
@@ -339,8 +324,6 @@ register_client(struct pci_dev *pdev,
 		vga_switcheroo_enable();
 	}
 	mutex_unlock(&vgasr_mutex);
-	//DEBUG
-	pr_info("client_register(): done"\n);
 	return 0;
 }
 
@@ -380,8 +363,6 @@ vga_switcheroo_register_client(struct pci_dev *pdev,
 		return (error);
 	}
 
-	//DEBUG
-	pr_info("vga_switcheroo_register_client(): register vgapci unit %d\n", unit);
 	return register_client(pdev, ops, VGA_SWITCHEROO_UNKNOWN_ID,
 			       unit == default_vgapci_unit,
 			       driver_power_control);
@@ -441,6 +422,35 @@ find_active_client(struct list_head *head)
 			return client;
 	return NULL;
 }
+
+/**
+ * vga_switcheroo_client_probe_defer() - whether to defer probing a given client
+ * @pdev: client pci device
+ *
+ * Determine whether any prerequisites are not fulfilled to probe a given
+ * client. Drivers shall invoke this early on in their ->probe callback
+ * and return %-EPROBE_DEFER if it evaluates to %true. Thou shalt not
+ * register the client ere thou hast called this.
+ *
+ * Return: %true if probing should be deferred, otherwise %false.
+ */
+ #if 0
+bool vga_switcheroo_client_probe_defer(struct pci_dev *pdev)
+{
+	if ((pdev->class >> 16) == PCI_BASE_CLASS_DISPLAY) {
+		/*
+		 * apple-gmux is needed on pre-retina MacBook Pro
+		 * to probe the panel if pdev is the inactive GPU.
+		 */
+		if (apple_gmux_present() && pdev != vga_default_device() &&
+		    !vgasr_priv.handler_flags)
+			return true;
+	}
+
+	return false;
+}
+EXPORT_SYMBOL(vga_switcheroo_client_probe_defer);
+#endif
 
 /**
  * vga_switcheroo_get_client_state() - obtain power state of a given client
@@ -962,9 +972,9 @@ static d_write_t     vga_switcheroo_write;
 
 static struct dev_ops vga_switcheroo_ops = {
 	{ "vga_switcheroo", 0, 0 },
-	.d_open =		vga_switcheroo_open,
+	.d_open =	vga_switcheroo_open,
 	.d_close =	vga_switcheroo_close,
-	.d_read =		vga_switcheroo_read,
+	.d_read =	vga_switcheroo_read,
 	.d_write =	vga_switcheroo_write,
 };
 
@@ -981,14 +991,6 @@ MALLOC_DEFINE(M_VGA_SWITCHEROO_BUF, "vga_switcheroo_buf", "buffer for vga_switch
 MALLOC_DECLARE(M_VGA_SWITCHEROO_VGASR_PRIV);
 MALLOC_DEFINE(M_VGA_SWITCHEROO_VGASR_PRIV, "vga_switcheroo_vgasr_priv", "private data of vga_switcheroo");
 
-/* XXX: TODO! ! !
-
-Add from linux 4.8:
-
-vga_switcheroo_client_probe_defer()
-
-*/
-
 static int
 vga_switcheroo_handler(struct module *m __unused, int what, void *arg __unused)
 {
@@ -997,7 +999,7 @@ vga_switcheroo_handler(struct module *m __unused, int what, void *arg __unused)
 	switch (what) {
 	case MOD_LOAD:                /* kldload */
 		vga_switcheroo_dev = make_dev(
-				&vga_switcheroo_ops,
+		    &vga_switcheroo_ops,
 		    0,
 		    UID_ROOT,
 		    GID_WHEEL,
@@ -1012,10 +1014,7 @@ vga_switcheroo_handler(struct module *m __unused, int what, void *arg __unused)
 		//init vgasr_priv
 		vgasr_priv = kmalloc(sizeof(*vgasr_priv), M_VGA_SWITCHEROO_VGASR_PRIV, M_WAITOK | M_ZERO);
 		vgasr_priv->clients = (struct list_head) { &(vgasr_priv->clients), &(vgasr_priv->clients) };
-		//LK_CANRECURSE or 0?
 		lockinit(&vgasr_priv->mux_hw_lk, "mux_hw_lk", 0, LK_CANRECURSE);
-
-		//DEBUG
 		kprintf("vga_switcheroo device loaded\n");
 		break;
 
@@ -1024,7 +1023,6 @@ vga_switcheroo_handler(struct module *m __unused, int what, void *arg __unused)
 		destroy_dev(vga_switcheroo_dev);
 		kfree(vga_switcheroo_buf, M_VGA_SWITCHEROO_BUF);
 		kfree(vgasr_priv, M_VGA_SWITCHEROO_VGASR_PRIV);
-		//DEBUG
 		kprintf("vga_switcheroo device unloaded\n");
 		break;
 
@@ -1041,14 +1039,12 @@ vga_switcheroo_open(struct dev_open_args *ap)
 {
 	int error = 0;
 
-	//uprintf("Opened device vga_switcheroo successfully.\n");
 	return (error);
 }
 
 static int
 vga_switcheroo_close(struct dev_close_args *ap)
 {
-	//uprintf("Closing device \"echo\".\n");
 	return (0);
 }
 
@@ -1079,10 +1075,7 @@ vga_switcheroo_write(struct dev_write_args *ap)
 	struct uio *uio = ap->a_uio;
 	size_t amt;
 	int error = 0;
-
-	//DEBUG
 	int cnt;
-
 	int ret;
 	bool can_switch;
 	bool delay = false;
@@ -1103,45 +1096,29 @@ vga_switcheroo_write(struct dev_write_args *ap)
 
 	/* Copy the string in from user memory to kernel memory */
 	amt = MIN(uio->uio_resid, (BUFFERSIZE - vga_switcheroo_buf->len));
-
-	//CHECK
 	cnt = amt;
-
-	//DEBUG
-	uprintf("[amt = %lu]", amt);
 
 	error = uiomove(vga_switcheroo_buf->msg + uio->uio_offset, amt, uio);
 
-	/* Now we need to null terminate and record the length */
 	vga_switcheroo_buf->len = uio->uio_offset;
 	vga_switcheroo_buf->msg[vga_switcheroo_buf->len] = 0;
 
 	if (error != 0)
 		uprintf("Write failed: bad address!\n");
 
-	//DEBUG
-	uprintf(":Write successful!:");
-
-	//lock vgasr_priv
 	mutex_lock(&vgasr_mutex);
 
 	if (!vgasr_priv->active) {
-		//DEBUG
-		uprintf("vga_switcheroo: not active!\n");
-
 		error = -EINVAL;
 		goto out;
 	}
 
 	/*
-	 * NOW START PROCESSING COMMANDS
+	 * START PROCESSING COMMANDS
 	 */
 
 	/* pwr off the device not in use */
 	if (strncmp(vga_switcheroo_buf->msg, "OFF", 3) == 0) {
-		//DEBUG
-		uprintf("vga_switcheroo: command = OFF\n");
-
 		list_for_each_entry(client, &vgasr_priv->clients, list) {
 			if (client->active || client_is_audio(client))
 				continue;
@@ -1156,9 +1133,6 @@ vga_switcheroo_write(struct dev_write_args *ap)
 
 	/* pwr on the device not in use */
 	if (strncmp(vga_switcheroo_buf->msg, "ON", 2) == 0) {
-		//DEBUG
-		uprintf("vga_switcheroo: command = ON\n");
-
 		list_for_each_entry(client, &vgasr_priv->clients, list) {
 			if (client->active || client_is_audio(client))
 				continue;
@@ -1173,9 +1147,6 @@ vga_switcheroo_write(struct dev_write_args *ap)
 
 	/* request a delayed switch - test can we switch now */
 	if (strncmp(vga_switcheroo_buf->msg, "DIGD", 4) == 0) {
-		//DEBUG
-		uprintf("vga_switcheroo: command = DIGD\n");
-
 		client_id = VGA_SWITCHEROO_IGD;
 		delay = true;
 	}
@@ -1246,15 +1217,11 @@ vga_switcheroo_write(struct dev_write_args *ap)
 
 out:
 	mutex_unlock(&vgasr_mutex);
-	//TODO: cnt vs error
 	return (error);
 }
 
 MODULE_VERSION(vga_switcheroo, 1);
-// MODULE_DEPEND(vga_switcheroo, drm, 1, 1, 4);
-
 DEV_MODULE(vga_switcheroo, vga_switcheroo_handler, NULL);
-
 
 /**
  * vga_switcheroo_process_delayed_switch() - helper for delayed switching
@@ -1362,7 +1329,7 @@ vga_switcheroo_power_switch(struct pci_dev *pdev,
  * the GPU up or down, and (b) update its internal power state representation
  * for the device.
  */
-#if 0  /* DFly: no dynamic_switch */
+#if 0  /* TODO: no dynamic_switch yet */
 void
 vga_switcheroo_set_dynamic_switch(struct pci_dev *pdev,
 				       enum vga_switcheroo_state dynamic)
@@ -1418,7 +1385,7 @@ vga_switcheroo_runtime_resume(struct device *dev)
 
 	return 0;
 }
-#endif  /* DFly: no dynamic_switch */
+#endif  /* TODO: no dynamic_switch yet */
 
 /**
  * vga_switcheroo_init_domain_pm_ops() - helper for driver power control
@@ -1432,7 +1399,7 @@ vga_switcheroo_runtime_resume(struct device *dev)
  * by the requisite calls to the handler. It needs only be called on platforms
  * where the power switch is separate to the device being powered down.
  */
-#if 0 /* DFly: no pm_ops */
+#if 0 /* TODO: no pm_ops */
 int
 vga_switcheroo_init_domain_pm_ops(struct device *dev,
 				      struct dev_pm_domain *domain)
@@ -1492,7 +1459,7 @@ vga_switcheroo_runtime_resume_hdmi_audio(struct device *dev)
 	}
 	return ret;
 }
-#endif  /* DFly: no pm_ops */
+#endif  /* TODO: no pm_ops */
 
 /**
  * vga_switcheroo_init_domain_pm_optimus_hdmi_audio() - helper for driver
@@ -1507,7 +1474,7 @@ vga_switcheroo_runtime_resume_hdmi_audio(struct device *dev)
  * Return: 0 on success, -EINVAL if no power management operations are
  * defined for this device.
  */
-#if 0  /* DFly: no pm */
+#if 0  /* TODO: no pm */
 int
 vga_switcheroo_init_domain_pm_optimus_hdmi_audio(struct device *dev,
 						 struct dev_pm_domain *domain)
@@ -1525,4 +1492,4 @@ vga_switcheroo_init_domain_pm_optimus_hdmi_audio(struct device *dev,
 	return -EINVAL;
 }
 EXPORT_SYMBOL(vga_switcheroo_init_domain_pm_optimus_hdmi_audio);
-#endif /* DFly: no pm */
+#endif /* TODO: no pm */
