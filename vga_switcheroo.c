@@ -1,7 +1,7 @@
 /*
  * vga_switcheroo.c -- vga_switcheroo driver for DragonFly
  *
- * Adapted from linux v4.9: linux-src/drivers/gpu/vga/vga_switcheroo.c
+ * Adapted from linux v4.8: linux-src/drivers/gpu/vga/vga_switcheroo.c
  *
  */
 
@@ -34,6 +34,7 @@
  * IN THE SOFTWARE.
  *
  */
+#include "opt_drm.h"
 
 #include <sys/param.h>
 #include <sys/kernel.h>
