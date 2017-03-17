@@ -34,7 +34,6 @@
  * IN THE SOFTWARE.
  *
  */
-#include "opt_drm.h"
 
 #include <sys/param.h>
 #include <sys/kernel.h>
@@ -56,11 +55,13 @@
 #include <linux/fs.h>
 #include <linux/module.h>
 #include <linux/pci.h>
-#include <linux/vga_switcheroo.h>
 #include <linux/pci_ids.h>
 #include <linux/mutex.h>
 #include <linux/list.h>
 #include <linux/export.h>
+
+#define VGA_SWITCHEROO
+#include <linux/vga_switcheroo.h>
 
 /**
  * DOC: Overview
